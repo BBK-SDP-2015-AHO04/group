@@ -29,17 +29,12 @@ object Trace {
   def render(scene: Scene, outfile: String, width: Int, height: Int) = {
     val image = new Image(width, height)
 
-    // Init the coordinator -- must be done before starting it.
-    Coordinator.init(image, outfile)
-
-    // TODO: Start the Coordinator actor.
-
+    import akka.actor.{Actor, ActorRef, Props, ActorSystem}
+    val system = ActorSystem("system")
+    val coordinator: ActorRef = system.actorOf(Props(new Coordinator(image, outfile)), name = "coordinator")
+    
+    scene.initCoordinator(coordinator)
     scene.traceImage(width, height)
 
-    // TODO:
-    // This one is tricky--we can't simply send a message here to print
-    // the image, since the actors started by traceImage haven't necessarily
-    // finished yet.  Maybe print should be called elsewhere?
-    Coordinator.print
   }
 }

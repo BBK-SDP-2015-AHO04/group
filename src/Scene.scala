@@ -39,10 +39,15 @@ object Scene {
   }
 }
 
+import akka.actor.ActorRef
+
 class Scene private(val objects: List[Shape], val lights: List[Light]) {
 
   private def this(p: (List[Shape], List[Light])) = this(p._1, p._2)
 
+  def initCoordinator(coord: ActorRef): Unit = { coordinator = coord }
+  
+  var coordinator:ActorRef = null;  
   val ambient = .2f
   val background = Colour.black
 
@@ -92,10 +97,11 @@ class Scene private(val objects: List[Shape], val lights: List[Light]) {
         if (Vector(colour.r, colour.g, colour.b).norm > 1)
           Trace.lightCount += 1
 
-        Coordinator.set(x, y, colour)
+        coordinator ! SetPixelColour(x, y, colour)
       }
     }
   }
+
 
   def shadow(ray: Ray, l: Light): Boolean = {
     val distSquared = (l.loc - ray.orig).normSquared
