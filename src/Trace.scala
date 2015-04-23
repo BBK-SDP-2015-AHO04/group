@@ -33,7 +33,7 @@ object Trace {
     val system = ActorSystem("system")
     val coordinator: ActorRef = system.actorOf(Props(new Coordinator(image, outfile)), name = "coordinator")
     
-    scene.initCoordinator(coordinator)
+    scene.initActorSystem(system, coordinator)
     scene.traceImage(width, height)
 
   }

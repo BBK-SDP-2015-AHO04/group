@@ -1,6 +1,6 @@
 object Scene {
 
-  import java.io.{FileReader, LineNumberReader}
+  import java.io.{ FileReader, LineNumberReader }
 
   import scala.annotation.tailrec
 
@@ -19,8 +19,7 @@ object Scene {
         case (_, Nil) => throw new RuntimeException("no lights")
         case (os, ls) => (os.reverse, ls.reverse)
       }
-    }
-    else {
+    } else {
       val fields = line.replaceAll("#.*", "").trim.split("\\s+").filter(_ != "")
       fields.headOption match {
         case Some("sphere") =>
@@ -39,23 +38,45 @@ object Scene {
   }
 }
 
-import akka.actor.ActorRef
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 
-class Scene private(val objects: List[Shape], val lights: List[Light]) {
+class Scene private (val objects: List[Shape], val lights: List[Light]) {
 
   private def this(p: (List[Shape], List[Light])) = this(p._1, p._2)
 
-  def initCoordinator(coord: ActorRef): Unit = { coordinator = coord }
+  def initActorSystem(sys: ActorSystem, coord: ActorRef) { 
+    coordinator = coord
+    system = sys
+  }
+
+  var coordinator: ActorRef = null;
+  var system: ActorSystem = null;
   
-  var coordinator:ActorRef = null;  
+  def traceImage(width: Int, height: Int) {
+    for (y <- 0 until height) {
+      system.actorOf(Props(new SceneActor(this, coordinator, height, width, y)), name = "sceneactor" + y)
+    }
+  }
+
+}
+
+private class SceneActor (val scene: Scene, 
+                          val coordinator: ActorRef,
+                          val height: Int,
+                          val width: Int,
+                          val row: Int) extends Actor {
+
+  
   val ambient = .2f
   val background = Colour.black
 
   val eye = Vector.origin
   val angle = 90f // viewing angle
   //val angle = 180f // fisheye
+  
+  override def receive = null
 
-  def traceImage(width: Int, height: Int) {
+ /////
 
     val frustum = (.5 * angle * math.Pi / 180).toFloat
 
@@ -70,38 +91,36 @@ class Scene private(val objects: List[Shape], val lights: List[Light]) {
     // Create a parallel version of this loop, creating one actor per pixel or per row of
     // pixels.  Each actor should send the Coordinator messages to set the
     // color of a pixel.  The actor need not receive any messages.
+    val y = row
+    for (x <- 0 until width) {
 
-    for (y <- 0 until height) {
-      for (x <- 0 until width) {
+      // This loop body can be sequential.
+      var colour = Colour.black
 
-        // This loop body can be sequential.
-        var colour = Colour.black
+      for (dx <- 0 until ss) {
+        for (dy <- 0 until ss) {
 
-        for (dx <- 0 until ss) {
-          for (dy <- 0 until ss) {
+          // Create a vector to the pixel on the view plane formed when
+          // the eye is at the origin and the normal is the Z-axis.
+          val dir = Vector(
+            (sinf * 2 * ((x + dx.toFloat / ss) / width - .5)).toFloat,
+            (sinf * 2 * (height.toFloat / width) * (.5 - (y + dy.toFloat / ss) / height)).toFloat,
+            cosf.toFloat).normalized
 
-            // Create a vector to the pixel on the view plane formed when
-            // the eye is at the origin and the normal is the Z-axis.
-            val dir = Vector(
-              (sinf * 2 * ((x + dx.toFloat / ss) / width - .5)).toFloat,
-              (sinf * 2 * (height.toFloat / width) * (.5 - (y + dy.toFloat / ss) / height)).toFloat,
-              cosf.toFloat).normalized
-
-            val c = trace(Ray(eye, dir)) / (ss * ss)
-            colour += c
-          }
+          val c = trace(Ray(eye, dir)) / (ss * ss)
+          colour += c
         }
-
-        if (Vector(colour.r, colour.g, colour.b).norm < 1)
-          Trace.darkCount += 1
-        if (Vector(colour.r, colour.g, colour.b).norm > 1)
-          Trace.lightCount += 1
-
-        coordinator ! SetPixelColour(x, y, colour)
       }
-    }
-  }
 
+      if (Vector(colour.r, colour.g, colour.b).norm < 1)
+        Trace.darkCount += 1
+      if (Vector(colour.r, colour.g, colour.b).norm > 1)
+        Trace.lightCount += 1
+
+      coordinator ! SetPixelColour(x, y, colour)
+    }
+    
+/////
 
   def shadow(ray: Ray, l: Light): Boolean = {
     val distSquared = (l.loc - ray.orig).normSquared
@@ -143,11 +162,9 @@ class Scene private(val objects: List[Shape], val lights: List[Light]) {
         if (power > 1e-12) {
           val scale = o.reflect * power
           l.colour * o.specular * scale
-        }
-        else
+        } else
           Colour.black
-      }
-      else
+      } else
         Colour.black
 
       println("specular " + specular)
@@ -162,8 +179,8 @@ class Scene private(val objects: List[Shape], val lights: List[Light]) {
 
   def reflected(v: Vector, N: Vector): Vector = v - (N * 2.0f * (v dot N))
 
-  def intersections(ray: Ray) = objects.flatMap {
-    o => o.intersect(ray).map { v => (v, o)}
+  def intersections(ray: Ray) = scene.objects.flatMap {
+    o => o.intersect(ray).map { v => (v, o) }
   }
 
   def closestIntersection(ray: Ray) = intersections(ray).sortWith {
@@ -196,7 +213,7 @@ class Scene private(val objects: List[Shape], val lights: List[Light]) {
         Trace.hitCount += 1
 
         // The contribution of each point light source.
-        var c = lights.foldLeft(Colour.black) {
+        var c = scene.lights.foldLeft(Colour.black) {
           case (c, l) => c + shade(ray, l, v, o)
         }
 
