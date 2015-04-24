@@ -87,7 +87,9 @@ private class SceneActor (val scene: Scene,
         Trace.lightCount += 1
 
       scene.coordinator ! SetPixelColour(x, y, colour)
+//      println("Sent pixel "+ x + " " + y + " to coordinator")
     }
+//    println("Sent row " + y + " to coordinator")
     
     override def receive = {
       case _ => println("SceneActor doesn't take messages")
@@ -116,6 +118,7 @@ class Scene private (val objects: List[Shape], val lights: List[Light]) {
   
   def traceImage(width: Int, height: Int) {
     for (y <- 0 until height) {
+//      println("Spawning sceneactor" + y)
       system.actorOf(Props(new SceneActor(this, height, width, y)), name = "sceneactor" + y)
     }
   }
