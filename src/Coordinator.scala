@@ -11,6 +11,8 @@ case class SetPixelColour(x: Int, y: Int, c: Colour)
 class Coordinator(var image: Image, val outfile: String) extends Actor {
 
   var waiting: Int = image.width * image.height
+  val t0 = System.currentTimeMillis()
+
 
   override def receive = {
     case SetPixelColour(x, y, c) => {
@@ -30,6 +32,8 @@ class Coordinator(var image: Image, val outfile: String) extends Actor {
   private def print = {
     assert(waiting == 0)
     image.print(outfile)
+    val t1 = System.currentTimeMillis()
+    println("Elapsed time: " + (t1 - t0) + "ms")
     context.system.shutdown()
   }
 }
