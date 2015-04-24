@@ -40,45 +40,14 @@ object Scene {
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 
-class Scene private (val objects: List[Shape], val lights: List[Light]) {
-
-  private def this(p: (List[Shape], List[Light])) = this(p._1, p._2)
-
-  def initActorSystem(sys: ActorSystem, coord: ActorRef) { 
-    coordinator = coord
-    system = sys
-  }
-
-  var coordinator: ActorRef = null;
-  var system: ActorSystem = null;
-  
-  def traceImage(width: Int, height: Int) {
-    for (y <- 0 until height) {
-      system.actorOf(Props(new SceneActor(this, coordinator, height, width, y)), name = "sceneactor" + y)
-    }
-  }
-
-}
-
 private class SceneActor (val scene: Scene, 
-                          val coordinator: ActorRef,
-                          val height: Int,
-                          val width: Int,
-                          val row: Int) extends Actor {
+                  val height: Int,
+                  val width: Int,
+                  val row: Int) extends Actor {
 
-  
-  val ambient = .2f
-  val background = Colour.black
+    /////
 
-  val eye = Vector.origin
-  val angle = 90f // viewing angle
-  //val angle = 180f // fisheye
-  
-  override def receive = null
-
- /////
-
-    val frustum = (.5 * angle * math.Pi / 180).toFloat
+    val frustum = (.5 * scene.angle * math.Pi / 180).toFloat
 
     val cosf = math.cos(frustum)
     val sinf = math.sin(frustum)
@@ -107,7 +76,7 @@ private class SceneActor (val scene: Scene,
             (sinf * 2 * (height.toFloat / width) * (.5 - (y + dy.toFloat / ss) / height)).toFloat,
             cosf.toFloat).normalized
 
-          val c = trace(Ray(eye, dir)) / (ss * ss)
+          val c = scene.trace(Ray(scene.eye, dir)) / (ss * ss)
           colour += c
         }
       }
@@ -117,10 +86,40 @@ private class SceneActor (val scene: Scene,
       if (Vector(colour.r, colour.g, colour.b).norm > 1)
         Trace.lightCount += 1
 
-      coordinator ! SetPixelColour(x, y, colour)
+      scene.coordinator ! SetPixelColour(x, y, colour)
     }
     
-/////
+    override def receive = {
+      case _ => println("SceneActor doesn't take messages")
+    }
+}
+
+class Scene private (val objects: List[Shape], val lights: List[Light]) {
+
+  private def this(p: (List[Shape], List[Light])) = this(p._1, p._2)
+  
+  val ambient = .2f
+  val background = Colour.black
+
+  val eye = Vector.origin
+  val angle = 90f // viewing angle
+  //val angle = 180f // fisheye
+  
+  
+  def initActorSystem(sys: ActorSystem, coord: ActorRef) { 
+    coordinator = coord
+    system = sys
+  }
+
+  var coordinator: ActorRef = null;
+  var system: ActorSystem = null;
+  
+  def traceImage(width: Int, height: Int) {
+    for (y <- 0 until height) {
+      system.actorOf(Props(new SceneActor(this, height, width, y)), name = "sceneactor" + y)
+    }
+  }
+
 
   def shadow(ray: Ray, l: Light): Boolean = {
     val distSquared = (l.loc - ray.orig).normSquared
@@ -179,7 +178,7 @@ private class SceneActor (val scene: Scene,
 
   def reflected(v: Vector, N: Vector): Vector = v - (N * 2.0f * (v dot N))
 
-  def intersections(ray: Ray) = scene.objects.flatMap {
+  def intersections(ray: Ray) = objects.flatMap {
     o => o.intersect(ray).map { v => (v, o) }
   }
 
@@ -213,7 +212,7 @@ private class SceneActor (val scene: Scene,
         Trace.hitCount += 1
 
         // The contribution of each point light source.
-        var c = scene.lights.foldLeft(Colour.black) {
+        var c = lights.foldLeft(Colour.black) {
           case (c, l) => c + shade(ray, l, v, o)
         }
 
